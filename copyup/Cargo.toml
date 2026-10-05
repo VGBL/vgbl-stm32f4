@@ -1,0 +1,11 @@
+[package]
+name = "vgbl-stm32f4-copyup"
+description = "Copies the VGBL bootloader image from flash to RAM and jumps to it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+cortex-m = "0.7.7"
+vgbl = { path = "../../vgbl", version = "0.1.0" }

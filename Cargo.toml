@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["bootloader", "copyup", "xtask"]
+# xtask is a host tool, so a bare `cargo build` only builds the firmware
+default-members = ["bootloader"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Nick Daria <contact@nickdaria.com>"]
+
+[profile.dev]
+# Sector 0 is only 16K, so dev builds need LTO to fit
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+debug = true

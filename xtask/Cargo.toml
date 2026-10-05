@@ -1,0 +1,11 @@
+[package]
+name = "xtask"
+description = "Builds the VGBL STM32F4 bootloader partition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+object = { version = "0.37", default-features = false, features = ["read_core", "elf", "std"] }
+vgbl = { path = "../../vgbl", version = "0.1.0" }

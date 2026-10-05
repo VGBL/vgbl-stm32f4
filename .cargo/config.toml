@@ -1,0 +1,9 @@
+[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+runner = "probe-rs run --chip STM32F446RETx"
+
+[alias]
+# xtask runs on the build machine, not the MCU
+xtask = "run --package xtask --target host-tuple --"
