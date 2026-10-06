@@ -7,8 +7,9 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-# Link to run from RAM. Copyup copies the image there from flash, so flash erases don't stall execution
-copyup = []
+# Link to run from flash instead of RAM. By default copyup copies the image to RAM, so flash erases don't stall
+# execution
+static = []
 
 [dependencies]
 commkit = { path = "../../commkit", version = "0.1.0" }

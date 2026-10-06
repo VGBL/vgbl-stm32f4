@@ -3,7 +3,11 @@
 
     Runs from the ~32 kHz LSI, so it keeps counting while the CPU is stalled on a flash operation. Once started,
     only a reset stops it: the application must keep feeding it after the bootloader jumps there.
+
+    Opt-in: main.rs uses NoWatchdog by default.
 */
+
+#![allow(dead_code)]
 
 use fugit::MillisDurationU32 as MilliSeconds;
 use stm32f4xx_hal::pac::IWDG;

@@ -11,33 +11,36 @@ mod watchdog;
 
 pub use clock::Stm32f4Clock;
 pub use flash::Stm32f4Flash;
+// Opt-in: main.rs uses NoWatchdog by default
+#[allow(unused_imports)]
 pub use watchdog::Stm32f4Watchdog;
 
 use core::ops::Range;
 
 use cortex_m::peripheral::SCB;
-use vgbl::hal::{ExecutionContext, Hal};
+use vgbl::hal::{ExecutionContext, Hal, NoWatchdog, Watchdog};
 
 /// The Cortex-M SRAM region. Everything below it (flash, its boot alias at 0x0, system memory) sits behind the
 /// flash interface or may be aliased to it
 const SRAM_REGION: Range<usize> = 0x2000_0000..0x4000_0000;
 
-pub struct Stm32f4 {
+/// `W` is [`NoWatchdog`] unless a watchdog is passed in, e.g. [`Stm32f4Watchdog`]
+pub struct Stm32f4<W: Watchdog = NoWatchdog> {
     clock: Stm32f4Clock,
     flash: Stm32f4Flash,
-    watchdog: Stm32f4Watchdog,
+    watchdog: W,
 }
 
-impl Stm32f4 {
-    pub fn new(clock: Stm32f4Clock, flash: Stm32f4Flash, watchdog: Stm32f4Watchdog) -> Self {
+impl<W: Watchdog> Stm32f4<W> {
+    pub fn new(clock: Stm32f4Clock, flash: Stm32f4Flash, watchdog: W) -> Self {
         Self { clock, flash, watchdog }
     }
 }
 
-impl Hal for Stm32f4 {
+impl<W: Watchdog> Hal for Stm32f4<W> {
     type Clock = Stm32f4Clock;
     type Flash = Stm32f4Flash;
-    type Watchdog = Stm32f4Watchdog;
+    type Watchdog = W;
 
     fn get_execution_context() -> ExecutionContext {
         // Any function in this image tells us where the image is running from

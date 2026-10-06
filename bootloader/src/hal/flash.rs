@@ -7,7 +7,7 @@
 */
 
 use stm32f4xx_hal::pac::FLASH;
-use vgbl::hal::{EraseError, ExecutionContext, Flash, FlashError, Hal, Sector, WriteError};
+use vgbl::hal::{EraseError, ExecutionContext, Flash, FlashError, Hal, Region, WriteError};
 
 use super::Stm32f4;
 
@@ -17,17 +17,15 @@ const UNLOCK_KEY2: u32 = 0xCDEF_89AB;
 /// EOP, OPERR, WRPERR, PGAERR, PGPERR, PGSERR, RDERR. All cleared by writing 1
 const SR_FLAGS: u32 = 0x1F3;
 
-/// STM32F446RE: 4x16K, 1x64K, 3x128K. The index is the hardware sector number
-const SECTORS: [Sector; 8] = [
-    Sector { address: 0x0800_0000, size: 16 * 1024 },
-    Sector { address: 0x0800_4000, size: 16 * 1024 },
-    Sector { address: 0x0800_8000, size: 16 * 1024 },
-    Sector { address: 0x0800_C000, size: 16 * 1024 },
-    Sector { address: 0x0801_0000, size: 64 * 1024 },
-    Sector { address: 0x0802_0000, size: 128 * 1024 },
-    Sector { address: 0x0804_0000, size: 128 * 1024 },
-    Sector { address: 0x0806_0000, size: 128 * 1024 },
+/// STM32F446RE: 4x16K, 1x64K, 3x128K. Sector indices match the hardware sector numbers
+const REGIONS: [Region; 3] = [
+    Region { address: 0x0800_0000, sector_size: 16 * 1024, count: 4 },
+    Region { address: 0x0801_0000, sector_size: 64 * 1024, count: 1 },
+    Region { address: 0x0802_0000, sector_size: 128 * 1024, count: 3 },
 ];
+
+/// Flash reads as this once erased
+const ERASED_WORD: u32 = 0xFFFF_FFFF;
 
 /// Words buffered by start_write
 const WRITE_WORDS: usize = 256;
@@ -51,7 +49,7 @@ pub struct Stm32f4Flash {
 
 impl Stm32f4Flash {
     pub fn new(flash: FLASH) -> Self {
-        Self { flash, context: Stm32f4::get_execution_context(), operation: Operation::Idle, buffer: [0; WRITE_WORDS] }
+        Self { flash, context: <Stm32f4>::get_execution_context(), operation: Operation::Idle, buffer: [0; WRITE_WORDS] }
     }
 
     fn busy(&self) -> bool {
@@ -165,15 +163,15 @@ impl Flash for Stm32f4Flash {
     const MAX_WRITE: usize = WRITE_WORDS * 4;
     const WRITE_ALIGN: usize = 4;
 
-    fn get_sectors(&self) -> &[Sector] {
-        &SECTORS
+    fn get_regions(&self) -> &[Region] {
+        &REGIONS
     }
 
     fn start_erase_sector(&mut self, sector: usize) -> Result<(), EraseError> {
         if self.busy() {
             return Err(EraseError::Busy);
         }
-        if sector >= SECTORS.len() {
+        if self.sector(sector).is_none() {
             return Err(EraseError::OutOfRange);
         }
 
@@ -182,7 +180,7 @@ impl Flash for Stm32f4Flash {
             w.pg().clear_bit();
             w.ser().set_bit();
             w.psize().psize32();
-            // Safety: SECTORS has one entry per hardware sector, so the index is a valid SNB
+            // Safety: sector indices match the hardware sector numbers, and the index was checked above
             unsafe { w.snb().bits(sector as u8) }
         });
         self.flash.cr().modify(|_, w| w.strt().set_bit());
@@ -203,11 +201,16 @@ impl Flash for Stm32f4Flash {
             return Err(WriteError::Unaligned);
         }
         let end = address.checked_add(data.len()).ok_or(WriteError::OutOfRange)?;
-        if address < SECTORS[0].address || end > SECTORS[SECTORS.len() - 1].end() {
+        if address < REGIONS[0].address || end > REGIONS[REGIONS.len() - 1].end() {
             return Err(WriteError::OutOfRange);
         }
         if data.is_empty() {
             return Ok(());
+        }
+        // The hardware programs over non-erased words without complaint, leaving the AND of old and new
+        // Safety: the range is word-aligned, inside flash, and flash is idle so it's readable
+        if (address..end).step_by(4).any(|word| unsafe { (word as *const u32).read_volatile() } != ERASED_WORD) {
+            return Err(WriteError::NotErased);
         }
 
         // Copied so the caller's buffer doesn't need to outlive the operation

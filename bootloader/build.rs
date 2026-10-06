@@ -1,8 +1,8 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    // Copyup builds run from RAM, so they need the RAM layout
-    let layout = if env::var_os("CARGO_FEATURE_COPYUP").is_some() { "memory-copyup.x" } else { "memory.x" };
+    // Static builds run from flash. Otherwise copyup copies the image to RAM, so it needs the RAM layout
+    let layout = if env::var_os("CARGO_FEATURE_STATIC").is_some() { "memory.x" } else { "memory-copyup.x" };
 
     // Put the layout where the cortex-m-rt linker script can find it as memory.x
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());

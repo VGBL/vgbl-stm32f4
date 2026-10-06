@@ -1,10 +1,10 @@
 /*
     Builds the bootloader partition
 
-        cargo xtask build [--copyup] [--release]
+        cargo xtask build [--static] [--release]
 
-    Standard: the bootloader links at the start of flash, so its loadable bytes are the whole partition.
-    Copyup: copyup (padded to its reservation), then an ImageHeader, then the RAM-linked bootloader image.
+    Copyup (default): copyup (padded to its reservation), then an ImageHeader, then the RAM-linked bootloader image.
+    Static: the bootloader links at the start of flash, so its loadable bytes are the whole partition.
 */
 
 use std::env;
@@ -17,9 +17,13 @@ use object::read::elf::{ElfFile32, ProgramHeader};
 use object::{Object, ObjectSection};
 use vgbl::image::header::ImageHeader;
 
-const USAGE: &str = "usage: cargo xtask build [--copyup] [--release]";
+const USAGE: &str = "usage: cargo xtask build [--static] [--release]";
 
 const TARGET: &str = "thumbv7em-none-eabihf";
+
+/// Package names, which are also the binary names
+const BOOTLOADER: &str = "vgbl-stm32f4-bootloader";
+const COPYUP: &str = "vgbl-stm32f4-copyup";
 
 const FLASH_BASE: u32 = 0x0800_0000;
 
@@ -56,11 +60,11 @@ fn run(args: &[String]) -> Result<(), String> {
         return Err(USAGE.into());
     }
 
-    let mut copyup = false;
+    let mut static_ = false;
     let mut release = false;
     for flag in flags {
         match flag.as_str() {
-            "--copyup" => copyup = true,
+            "--static" => static_ = true,
             "--release" => release = true,
             _ => return Err(format!("unknown flag {flag}\n{USAGE}")),
         }
@@ -70,19 +74,19 @@ fn run(args: &[String]) -> Result<(), String> {
     let target_dir = env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("target"));
     let out_dir = target_dir.join(TARGET).join(if release { "release" } else { "debug" });
 
-    let (partition, name) = if copyup {
-        cargo_build(root, "copyup", &[], release)?;
-        cargo_build(root, "bootloader", &["--features", "copyup"], release)?;
-        let copyup = load(&out_dir.join("copyup"))?;
-        let bootloader = load(&out_dir.join("bootloader"))?;
-        (assemble_copyup(copyup, bootloader)?, "partition-copyup.bin")
-    } else {
-        cargo_build(root, "bootloader", &[], release)?;
-        let bootloader = load(&out_dir.join("bootloader"))?;
+    let (partition, name) = if static_ {
+        cargo_build(root, BOOTLOADER, &["--features", "static"], release)?;
+        let bootloader = load(&out_dir.join(BOOTLOADER))?;
         if bootloader.base != FLASH_BASE {
             return Err(format!("bootloader links at {:#010x}, expected {FLASH_BASE:#010x}", bootloader.base));
         }
-        (bootloader.bytes, "partition.bin")
+        (bootloader.bytes, "partition-static.bin")
+    } else {
+        cargo_build(root, COPYUP, &[], release)?;
+        cargo_build(root, BOOTLOADER, &[], release)?;
+        let copyup = load(&out_dir.join(COPYUP))?;
+        let bootloader = load(&out_dir.join(BOOTLOADER))?;
+        (assemble_copyup(copyup, bootloader)?, "partition.bin")
     };
 
     if partition.len() > PARTITION_SIZE {
