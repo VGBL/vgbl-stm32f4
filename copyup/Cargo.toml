@@ -1,6 +1,6 @@
 [package]
 name = "vgbl-stm32f4-copyup"
-description = "Copies the VGBL bootloader image from flash to RAM and jumps to it"
+description = "Copies the VGBL bootloader segment from flash to RAM and jumps to it"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

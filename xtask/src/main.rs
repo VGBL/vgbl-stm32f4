@@ -3,7 +3,7 @@
 
         cargo xtask build [--static] [--release]
 
-    Copyup (default): copyup (padded to its reservation), then an ImageHeader, then the RAM-linked bootloader image.
+    Copyup (default): copyup (padded to its reservation), then a CopyupHeader, then the RAM-linked bootloader segment.
     Static: the bootloader links at the start of flash, so its loadable bytes are the whole partition.
 */
 
@@ -15,7 +15,7 @@ use std::process::{Command, ExitCode};
 use object::elf::PT_LOAD;
 use object::read::elf::{ElfFile32, ProgramHeader};
 use object::{Object, ObjectSection};
-use vgbl::image::header::ImageHeader;
+use vgbl::segment::CopyupHeader;
 
 const USAGE: &str = "usage: cargo xtask build [--static] [--release]";
 
@@ -37,7 +37,7 @@ const PARTITION_SIZE: usize = 16 * 1024;
 const ERASED: u8 = 0xFF;
 
 /// The loadable contents of a linked ELF, laid out by load address
-struct Image {
+struct Elf {
     base: u32,
     bytes: Vec<u8>,
     vector_table: u32,
@@ -115,27 +115,27 @@ fn cargo_build(root: &Path, package: &str, extra: &[&str], release: bool) -> Res
     Ok(())
 }
 
-fn load(path: &Path) -> Result<Image, String> {
+fn load(path: &Path) -> Result<Elf, String> {
     let data = fs::read(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
     let elf = ElfFile32::<object::Endianness>::parse(&*data).map_err(|e| format!("parsing {}: {e}", path.display()))?;
     let endian = elf.endian();
 
-    // Segments with file contents are what ends up in flash, at their physical (load) address
-    let mut segments = Vec::new();
+    // Program headers with file contents are what ends up in flash, at their physical (load) address
+    let mut loads = Vec::new();
     for header in elf.elf_program_headers() {
         if header.p_type(endian) != PT_LOAD || header.p_filesz(endian) == 0 {
             continue;
         }
-        let bytes = header.data(endian, &*data).map_err(|_| format!("{}: bad segment", path.display()))?;
-        segments.push((header.p_paddr(endian), bytes));
+        let bytes = header.data(endian, &*data).map_err(|_| format!("{}: bad program header", path.display()))?;
+        loads.push((header.p_paddr(endian), bytes));
     }
 
-    let base = segments.iter().map(|(addr, _)| *addr).min().ok_or(format!("{}: nothing to load", path.display()))?;
-    let end = segments.iter().map(|(addr, bytes)| addr + bytes.len() as u32).max().unwrap();
-    let mut image = vec![ERASED; (end - base) as usize];
-    for (addr, bytes) in segments {
+    let base = loads.iter().map(|(addr, _)| *addr).min().ok_or(format!("{}: nothing to load", path.display()))?;
+    let end = loads.iter().map(|(addr, bytes)| addr + bytes.len() as u32).max().unwrap();
+    let mut contents = vec![ERASED; (end - base) as usize];
+    for (addr, bytes) in loads {
         let offset = (addr - base) as usize;
-        image[offset..offset + bytes.len()].copy_from_slice(bytes);
+        contents[offset..offset + bytes.len()].copy_from_slice(bytes);
     }
 
     let vector_table = elf
@@ -143,10 +143,10 @@ fn load(path: &Path) -> Result<Image, String> {
         .ok_or(format!("{}: no .vector_table section", path.display()))?
         .address() as u32;
 
-    Ok(Image { base, bytes: image, vector_table })
+    Ok(Elf { base, bytes: contents, vector_table })
 }
 
-fn assemble_copyup(copyup: Image, bootloader: Image) -> Result<Vec<u8>, String> {
+fn assemble_copyup(copyup: Elf, bootloader: Elf) -> Result<Vec<u8>, String> {
     if copyup.base != FLASH_BASE {
         return Err(format!("copyup links at {:#010x}, expected {FLASH_BASE:#010x}", copyup.base));
     }
@@ -155,22 +155,22 @@ fn assemble_copyup(copyup: Image, bootloader: Image) -> Result<Vec<u8>, String> 
     }
 
     // Copyup copies whole words
-    let mut image = bootloader.bytes;
-    image.resize(image.len().next_multiple_of(4), ERASED);
+    let mut segment = bootloader.bytes;
+    segment.resize(segment.len().next_multiple_of(4), ERASED);
 
-    let header = ImageHeader {
+    let header = CopyupHeader {
         load_addr: bootloader.base,
-        size: image.len() as u32,
+        size: segment.len() as u32,
         vector_table_offset: bootloader.vector_table - bootloader.base,
     };
 
     let mut partition = copyup.bytes;
     partition.resize(COPYUP_SIZE, ERASED);
     partition.extend_from_slice(&header.to_bytes());
-    partition.extend_from_slice(&image);
+    partition.extend_from_slice(&segment);
 
     println!(
-        "copyup image: load {:#010x}, {} bytes, vector table +{:#x}",
+        "bootloader segment: load {:#010x}, {} bytes, vector table +{:#x}",
         header.load_addr, header.size, header.vector_table_offset
     );
     Ok(partition)

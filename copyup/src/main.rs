@@ -1,7 +1,7 @@
 /*
     Copyup
 
-    Runs from the start of flash. Reads the image header that follows copyup, copies the bootloader image to the
+    Runs from the start of flash. Reads the segment header that follows copyup, copies the bootloader segment to the
     RAM address it names, points VTOR at the copied vector table and jumps to it. Running from RAM lets the
     bootloader keep executing while the single flash bank is busy erasing.
 */
@@ -14,14 +14,14 @@ use core::panic::PanicInfo;
 use core::ptr::addr_of;
 
 use cortex_m::peripheral::SCB;
-use vgbl::image::header::ImageHeader;
+use vgbl::segment::CopyupHeader;
 
 const SRAM: Range<u32> = 0x2000_0000..0x2002_0000;
 const STACK_RESERVE: u32 = 1024;
 const VECTOR_TABLE_ALIGN: u32 = 512;
 
 unsafe extern "C" {
-    static _image_header: [u8; ImageHeader::SIZE];
+    static _segment_header: [u8; CopyupHeader::SIZE];
 }
 
 #[unsafe(link_section = ".vector_table.exceptions")]
@@ -32,13 +32,13 @@ static EXCEPTIONS: [unsafe extern "C" fn() -> !; 15] = [
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn reset() -> ! {
-    let header_bytes = unsafe { &*addr_of!(_image_header) };
-    let header = ImageHeader::from_bytes(header_bytes);
+    let header_bytes = unsafe { &*addr_of!(_segment_header) };
+    let header = CopyupHeader::from_bytes(header_bytes);
     let Some(vector_table) = validate(&header) else { halt() };
 
     // Word copy instead of copy_nonoverlapping: compiler_builtins' memcpy alone would fill most of copyup's 1K.
     // Volatile so the loop isn't turned back into a memcpy call
-    let source = unsafe { header_bytes.as_ptr().add(ImageHeader::SIZE) }.cast::<u32>();
+    let source = unsafe { header_bytes.as_ptr().add(CopyupHeader::SIZE) }.cast::<u32>();
     let destination = header.load_addr as *mut u32;
     for word in 0..(header.size / 4) as usize {
         unsafe { destination.add(word).write_volatile(source.add(word).read_volatile()) };
@@ -53,7 +53,7 @@ unsafe extern "C" fn reset() -> ! {
     }
 }
 
-fn validate(header: &ImageHeader) -> Option<u32> {
+fn validate(header: &CopyupHeader) -> Option<u32> {
     let end = header.load_addr.checked_add(header.size)?;
     let vector_table = header.load_addr.checked_add(header.vector_table_offset)?;
 

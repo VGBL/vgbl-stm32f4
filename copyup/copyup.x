@@ -1,4 +1,4 @@
-/* STM32F446RE: copyup owns the first 1K of sector 0. The image header and payload follow immediately after */
+/* STM32F446RE: copyup owns the first 1K of sector 0. The segment header and data follow immediately after */
 MEMORY
 {
   FLASH : ORIGIN = 0x08000000, LENGTH = 1K
@@ -8,7 +8,7 @@ MEMORY
 ENTRY(reset);
 
 _stack_start = ORIGIN(RAM) + LENGTH(RAM);
-_image_header = ORIGIN(FLASH) + LENGTH(FLASH);
+_segment_header = ORIGIN(FLASH) + LENGTH(FLASH);
 
 SECTIONS
 {

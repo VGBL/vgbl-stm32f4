@@ -1,7 +1,7 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
-    // Static builds run from flash. Otherwise copyup copies the image to RAM, so it needs the RAM layout
+    // Static builds run from flash. Otherwise copyup copies the bootloader to RAM, so it needs the RAM layout
     let layout = if env::var_os("CARGO_FEATURE_STATIC").is_some() { "memory.x" } else { "memory-copyup.x" };
 
     // Put the layout where the cortex-m-rt linker script can find it as memory.x

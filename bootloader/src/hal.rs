@@ -43,7 +43,7 @@ impl<W: Watchdog> Hal for Stm32f4<W> {
     type Watchdog = W;
 
     fn get_execution_context() -> ExecutionContext {
-        // Any function in this image tells us where the image is running from
+        // Any function in the bootloader tells us where it is running from
         let code = Self::get_execution_context as fn() -> ExecutionContext as usize;
         // Safety: reading VTOR has no side effects
         let vectors = unsafe { (*SCB::PTR).vtor.read() } as usize;

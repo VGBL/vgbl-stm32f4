@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [features]
-# Link to run from flash instead of RAM. By default copyup copies the image to RAM, so flash erases don't stall
+# Link to run from flash instead of RAM. By default copyup copies the bootloader to RAM, so flash erases don't stall
 # execution
 static = []
 
